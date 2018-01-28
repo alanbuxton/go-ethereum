@@ -28,6 +28,8 @@ import (
 	"github.com/ethereum/go-ethereum/consensus"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/log"
+
+        "time"
 )
 
 // Seal implements consensus.Engine, attempting to find a nonce that satisfies
@@ -107,9 +109,12 @@ func (ethash *Ethash) mine(block *types.Block, id int, seed uint64, abort chan s
 	var (
 		attempts = int64(0)
 		nonce    = seed
+                total_attempts = int64(0)
+                next_log_at = int64(1000)
 	)
 	logger := log.New("miner", id)
-	logger.Trace("Started ethash search for new nonces", "seed", seed)
+	logger.Info("Started ethash search for new nonces", "seed", seed)
+        tstart := time.Now().Unix()
 search:
 	for {
 		select {
@@ -122,6 +127,13 @@ search:
 		default:
 			// We don't have to update hash rate on every nonce, so update after after 2^X nonces
 			attempts++
+                        total_attempts += 1
+                        if attempts == next_log_at {
+                                now := time.Now().Unix()
+                                dur := time.Duration(now - tstart) * time.Second
+                                logger.Info("Still mining","attempts",total_attempts,"duration",common.PrettyDuration(dur))
+                                next_log_at *= 2
+                        }
 			if (attempts % (1 << 15)) == 0 {
 				ethash.hashrate.Mark(attempts)
 				attempts = 0
@@ -146,6 +158,9 @@ search:
 			nonce++
 		}
 	}
+        now := time.Now().Unix()
+        dur := time.Duration(now - tstart) * time.Second
+        logger.Info("Finished mining","attempts",total_attempts,"duration",common.PrettyDuration(dur))
 	// Datasets are unmapped in a finalizer. Ensure that the dataset stays live
 	// during sealing so it's not unmapped while being read.
 	runtime.KeepAlive(dataset)
